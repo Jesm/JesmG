@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>JesmG</title>
+<style>
+*{
+	margin:0;
+	padding:0;
+}
+html, body{
+	width:100%;
+	height:100%;
+}
+body{
+	overflow:hidden;
+}
+</style>
+</head>
+
+<body>
+<canvas></canvas>
+<script src="jesm3.1.js"></script>
+<script>
+function Ctxt(el){
+	var THIS=this;
+	this.el=el;
+	this.ctxt=el.getContext("2d");
+	this.pontos=[];
+	this.meio=[];
+	
+	// "propriedades fisicas"
+	this.forcaG=[0, 9.8];
+	this.reacao=[.8, .8];
+	this.forcaPontoG=25;
+	this.atrito=[.95, .95];
+	
+	this.addPonto=function(pos, vel){
+		this.pontos.push(new Ponto(this, pos, vel));
+	};
+	this.desenha={
+		cores:{
+			bg:"#333",
+			verde:'#60FF00'
+		},
+		linhaVerde:function(){
+			var pi2=Math.PI*2;
+			THIS.ctxt.beginPath();
+			THIS.ctxt.arc(THIS.pontoInicial[0], THIS.pontoInicial[1], 3, 0, pi2);
+			THIS.ctxt.arc(THIS.posMouse[0], THIS.posMouse[1], 5, 0, pi2);
+			THIS.ctxt.fillStyle=this.cores.verde;
+			THIS.ctxt.fill();
+			
+			THIS.ctxt.lineWidth=3;
+			THIS.ctxt.strokeStyle=this.cores.verde;
+			THIS.ctxt.beginPath();
+			THIS.ctxt.moveTo(THIS.pontoInicial[0], THIS.pontoInicial[1]);
+			THIS.ctxt.lineTo(THIS.posMouse[0], THIS.posMouse[1]);
+			THIS.ctxt.stroke();
+		},
+		limpar:function(){
+			THIS.ctxt.fillStyle=this.cores.bg;
+			THIS.ctxt.fillRect(0, 0, THIS.tela[0], THIS.tela[1]);
+		},
+		ponto:function(coord, raio, bg){
+			THIS.ctxt.beginPath();
+			THIS.ctxt.arc(coord[0], coord[1], raio, 0, Math.PI*2);
+			if(!bg){
+				bg=[];
+				for(var x=3;x--;bg[x]=Math.floor(Math.random()*56)+200);
+				bg='rgb('+bg.join(',')+')';
+			}
+			THIS.ctxt.fillStyle=bg;
+			THIS.ctxt.fill();
+		},
+		bolaG:function(){
+			var rgb=[254, 96, 77];
+			for(var x=50;x--;){
+				for(var y=3;y--;rgb[y]--);
+				this.ponto(THIS.posMouse, 25+x*2, 'rgb('+rgb.join(',')+')');
+			}
+		}
+	};
+	
+	this.iniciar=function(){
+		addEvento(window, "resize", function(){
+			THIS.tela=obCross.inner();
+			for(var str=['width', 'height'], x=2;x--;){
+				THIS.meio[x]=THIS.tela[x]/2;
+				THIS.el[str[x]]=THIS.tela[x];
+			}
+		})[2]();
+		window.oncontextmenu=function(){
+			return false;
+		};
+		addEvento(window, "contextmenu", function(e){
+			e=e||window.event;
+			if(obCross.which(e)==3)
+				THIS.pontoG=!THIS.pontoG;
+		});
+		addEvento(window, "mousedown", function(e){
+			e=e||window.event;			
+			var mauze=obCross.getMouse(e);
+			if(!THIS.posMouse)
+				THIS.posMouse=mauze;
+			if(obCross.which(e)==1&&!THIS.pontoG){
+				THIS.criando=true;
+				THIS.pontoInicial=mauze;
+			}
+		});
+		addEvento(window, "mousemove", function(e){
+			e=e||window.event;
+			THIS.posMouse=obCross.getMouse(e);
+		});
+		addEvento(window, "mouseup", function(e){
+			e=e||window.event;
+			if(obCross.which(e)==1){
+				THIS.criando=false;
+				var mauze=obCross.getMouse(e);
+				for(var x=2;x--;THIS.pontoInicial[x]=(THIS.pontoInicial[x]-mauze[x])/10);
+				THIS.addPonto(mauze, THIS.pontoInicial);
+			}
+		});
+		
+		this.lastFrameTime=+new Date;
+		
+		jesmCore.animator.addTarefa(function(){
+			var tempoFrame=+new Date, diferencaFrame=(tempoFrame-this.lastFrameTime)/1000, len=this.pontos.length;
+			this.lastFrameTime=tempoFrame;
+			
+			this.desenha.limpar();
+			if(this.criando)
+				this.desenha.linhaVerde();
+			if(this.pontoG)
+				this.desenha.bolaG();
+			
+			for(var x=len;x--;){
+				var ponto=this.pontos[x], acel=this.forcaG.slice();
+				if(this.pontoG)
+					var distG=ponto.distanciaAte(this.posMouse);
+				for(var y=2;y--;){
+					if(this.pontoG)
+						acel[y]+=(this.posMouse[y]-ponto.pos[y])*this.forcaPontoG/distG;
+					ponto.vel[y]+=diferencaFrame*acel[y];
+					ponto.pos[y]+=ponto.vel[y]*300*diferencaFrame;
+				}
+			}
+			
+			for(var x=len;x--;this.resolveColisaoLimite(x), this.resolveColisao(x));
+			
+			for(var x=len;x--;){
+				var ponto=this.pontos[x];
+				this.desenha.ponto(ponto.pos, ponto.raio);
+			}
+		}, this);
+		return this;
+	};
+	
+	this.resolveColisaoLimite=function(x){
+		var ponto=this.pontos[x];
+		for(var y=2;y--;){
+			var disTemp=Math.abs(ponto.pos[y]-=this.meio[y])+ponto.raio, flag=ponto.pos[y]<=0?-1:1;
+			if(disTemp>=this.meio[y]&&ponto.vel[y]*flag>0){
+				ponto.vel[y]*=-this.reacao[y];
+				ponto.pos[y]=(this.meio[y]-((disTemp-this.meio[y]+ponto.raio)*this.reacao[y]))*flag;
+			}
+			ponto.pos[y]+=this.meio[y];
+		}
+	};
+	
+	this.resolveColisao=function(x){
+		var ponto=this.pontos[x];
+		for(var y=this.pontos.length;y--;){
+			if(y==x)
+				continue;
+			var pontoAtual=this.pontos[y],
+			distancia=ponto.distanciaAte(pontoAtual.pos),
+			distanciaMinima=ponto.raio+pontoAtual.raio;
+			
+			if(distancia<distanciaMinima){
+				var razao=distancia/distanciaMinima;
+				for(var z=2;z--;){
+					var distanciaEixo=ponto.pos[z]-pontoAtual.pos[z];
+					pontoAtual.vel[z]*=-this.reacao[z];
+					ponto.vel[z]*=-this.reacao[z];
+					var afasta=(distanciaEixo*(1-razao))/2;
+					ponto.pos[z]+=afasta;
+					pontoAtual.pos[z]-=afasta;
+				};
+				this.resolveColisaoLimite(x);
+				this.resolveColisaoLimite(y);
+				//this.resolveColisao(y);
+			}
+		}
+	};
+};
+
+function Ponto(ctxt, pos, velocidade, raio){
+	var THIS=this;
+	this.ctxt=ctxt;
+	
+	// "propriedades fisicas"	
+	this.raio=raio||10;
+	this.vel=velocidade||[Math.random()*5-2.5, Math.random()*5-2.5];
+	this.pos=pos||(function(s){
+		var ret=[];
+		for(var x=2;x--;ret[x]=Math.random()*(s[x]-THIS.raio));
+		return ret;
+	})(ctxt.tela);
+	this.distanciaAte=function(p){
+		var soma=0;
+		for(var x=2;x--;soma+=Math.pow(this.pos[x]-p[x], 2));
+		return Math.sqrt(soma);
+	}
+}
+
+var contexto=new Ctxt(pega("canvas", 0)).iniciar(), sit=false, mouse=[0, 0];
+/*addEvento(window, "click", function(e){
+	sit=!sit;
+});
+addEvento(window, "mousemove", function(e){
+	mouse=obCross.getMouse(e||window.event);
+});
+setInterval(function(){
+	if(!sit)
+		return;
+	contexto.addPonto(mouse);
+}, 4);*/
+</script>
+</body>
+</html>
